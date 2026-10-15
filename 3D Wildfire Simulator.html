@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>3D Wildfire Simulator</title>
+<style>
+:root{--bg:#e9eef2;--sky1:#9fb7c9;--sky2:#dfe8ee;--panel:#ffffffea;--ink:#16222b;--mut:#5d6f7c;--acc:#c2410c;--line:#0f2a3a22;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0c1319;--sky1:#0a1118;--sky2:#22303b;--panel:#121c24ea;--ink:#e6eef3;--mut:#8ea1ae;--acc:#ff8a3d;--line:#ffffff1f}}
+:root[data-theme="dark"]{--bg:#0c1319;--sky1:#0a1118;--sky2:#22303b;--panel:#121c24ea;--ink:#e6eef3;--mut:#8ea1ae;--acc:#ff8a3d;--line:#ffffff1f}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:14px/1.45 "Avenir Next","Segoe UI",system-ui,sans-serif;overflow:hidden}
+#stage{position:absolute;inset:0;background:linear-gradient(var(--sky1),var(--sky2))}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+canvas:active{cursor:grabbing}
+#panel{position:absolute;top:12px;left:12px;width:292px;max-height:calc(100% - 24px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;backdrop-filter:blur(8px)}
+h1{font-size:17px;margin:0 0 2px;font-weight:700;letter-spacing:-.01em}
+.sub{color:var(--mut);font-size:12px;margin:0 0 12px}
+label{display:flex;justify-content:space-between;font-weight:600;margin:12px 0 4px}
+label span{color:var(--acc);font-weight:600;font-variant-numeric:tabular-nums}
+select,button{width:100%;font:inherit;padding:8px 10px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink)}
+select option{color:#111}
+input[type=range]{width:100%;accent-color:var(--acc)}
+.note{color:var(--mut);font-size:12px;margin:4px 0 0}
+.row{display:flex;gap:8px;margin-top:14px}
+button{cursor:pointer;font-weight:600}
+button.go{background:var(--acc);border-color:var(--acc);color:#fff}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+#hud{position:absolute;right:12px;top:12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;min-width:170px;backdrop-filter:blur(8px)}
+#hud div{display:flex;justify-content:space-between;gap:16px;font-variant-numeric:tabular-nums}
+#hud b{color:var(--acc)}
+#compass{width:46px;height:46px;border:1px solid var(--line);border-radius:50%;margin:8px auto 0;position:relative}
+#compass i{position:absolute;left:50%;top:50%;width:2px;height:18px;background:var(--acc);transform-origin:50% 100%;transform:translate(-50%,-100%) rotate(0deg)}
+#compass i:after{content:"";position:absolute;top:-4px;left:-4px;border:5px solid transparent;border-bottom:7px solid var(--acc);border-top:0}
+#compass u{position:absolute;top:-1px;left:50%;transform:translate(-50%,-110%);font:10px/1 sans-serif;text-decoration:none;color:var(--mut)}
+#status{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:6px 14px;font-size:12px;color:var(--mut);white-space:nowrap}
+@media (max-width:700px){#panel{top:auto;bottom:0;left:0;right:0;width:auto;max-height:46%;border-radius:12px 12px 0 0}#hud{top:8px;right:8px}#status{display:none}}
+</style></head><body>
+<div id="stage"></div>
+<div id="panel">
+<h1>Wildfire simulator</h1>
+<p class="sub">Drag to orbit, scroll to zoom, click the ground to ignite. Fire fronts, crews, wildlife and embers are all agents.</p>
+<label for="biome">Grass biome</label>
+<select id="biome"></select><p class="note" id="bnote"></p>
+<label for="land">Landscape</label>
+<select id="land"></select>
+<label for="forest">Forest cover <span id="forestv"></span></label>
+<input id="forest" type="range" min="0" max="60" value="20">
+<p class="note">Fire runs faster uphill and slower downhill. Trees burn longer and hotter than grass.</p>
+<label for="crews">Fire crews <span id="crewsv"></span></label>
+<input id="crews" type="range" min="0" max="12" value="5">
+<label for="deer">Wildlife <span id="deerv"></span></label>
+<input id="deer" type="range" min="0" max="40" value="20">
+<p class="note">Crews leave the blue base, put out flames and wet firebreaks, then refill. Wildlife flees the fire.</p>
+<label for="ign">Ignition type</label>
+<select id="ign"></select><p class="note" id="inote"></p>
+<label for="wd">Wind blowing toward <span id="wdv"></span></label>
+<input id="wd" type="range" min="0" max="359" value="90">
+<label for="ws">Wind speed <span id="wsv"></span></label>
+<input id="ws" type="range" min="0" max="80" value="25">
+<label for="weather">Weather</label>
+<select id="weather"></select>
+<label for="humidity">Humidity <span id="humidityv"></span></label>
+<input id="humidity" type="range" min="0" max="100" value="25">
+<label for="temp">Temperature <span id="tempv"></span></label>
+<input id="temp" type="range" min="5" max="45" value="30">
+<label for="rain">Rainfall <span id="rainv"></span></label>
+<input id="rain" type="range" min="0" max="40" value="0">
+<p class="note" id="wnote"></p>
+<label for="rate">Fire spread rate <span id="ratev"></span></label>
+<input id="rate" type="range" min="0.5" max="2" step="0.05" value="1">
+<label for="speed">Playback speed <span id="speedv"></span></label>
+<input id="speed" type="range" min="1" max="30" value="6">
+<div class="row"><button class="go" id="ignite">Ignite at center</button><button id="pause">Pause</button></div>
+<div class="row"><button id="reset">New terrain</button></div>
+</div>
+<div id="hud">
+<div>Step <b id="s_step">0</b></div><div>Fire agents <b id="s_fire">0</b></div><div>Burnt <b id="s_burnt">0%</b></div>
+<div>Crews down <b id="s_crew">0</b></div><div>Wildlife lost <b id="s_deer">0</b></div><div>Embers <b id="s_emb">0</b></div>
+<div id="compass"><u>N</u><i></i></div>
+</div>
+<div id="status"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const N=100,K=N/50, $=id=>document.getElementById(id);
+// p = base spread chance per neighbor per step (notebook: grass .3), burn = steps a cell burns, h = fuel height, wind = wind sensitivity
+const BIOMES={
+ grassland:{n:'Grassland',p:.30,burn:2,h:.22,wind:1,dry:.05,wet:.03,c:'#5fae4a',tc:'#2f6b35',land:'hills',rel:1,forest:12,rk:.9,feat:'',d:'Rolling green hills with scattered woodlots.'},
+ savanna:{n:'Savanna',p:.36,burn:2,h:.34,wind:1.1,dry:.12,wet:.02,c:'#b5a84a',tc:'#7c7a2f',land:'hills',rel:.4,forest:6,scat:1,rk:2,feat:'',d:'Flat golden plains with lone scattered trees.'},
+ prairie:{n:'Tallgrass prairie',p:.42,burn:3,h:.55,wind:1.15,dry:.08,wet:.04,c:'#8aab3a',tc:'#4f7d36',land:'hills',rel:.55,forest:3,rk:2,feat:'',d:'Gently rolling tallgrass with few trees.'},
+ steppe:{n:'Dry steppe',p:.26,burn:1,h:.14,wind:1,dry:.15,wet:.01,c:'#b59f62',tc:'#6b6a3a',land:'hills',rel:.6,forest:0,rk:.92,feat:'gullies',d:'Dry open ground cut by sandy gullies.'},
+ chaparral:{n:'Dry brush / chaparral',p:.60,burn:4,h:.75,wind:1.3,dry:.2,wet:.01,c:'#6f7d3a',tc:'#445a26',land:'mountain',rel:1.1,forest:28,rk:.85,feat:'',d:'Steep, rugged slopes thick with shrubs.'},
+ wetland:{n:'Wet meadow',p:.14,burn:1,h:.3,wind:.8,dry:.02,wet:.3,c:'#4d9a6a',tc:'#2f6b45',land:'hills',rel:.25,forest:15,rk:2,feat:'ponds',d:'Low flat meadow with ponds that stop fire.'},
+ tundra:{n:'Tundra grass',p:.10,burn:1,h:.10,wind:.9,dry:.02,wet:.15,c:'#8a9a78',tc:'#56705a',land:'mountain',rel:.7,forest:2,rk:.75,feat:'snow',d:'Bare uplands with snow patches and rock.'}
+};
+// int = spread intensity multiplier, spot = ember spotting (fire jumps downwind)
+const IGN={
+ lightning:{n:'Lightning strike',int:1,d:'One ignition point, normal intensity.'},
+ campfire:{n:'Campfire spark',int:.75,d:'One point, weaker and slower to establish.'},
+ arson:{n:'Arson line',int:1.15,d:'A 16-cell line set across the wind.'},
+ storm:{n:'Dry lightning cluster',int:1,d:'Seven separate strikes around the click.'},
+ ember:{n:'Wind-driven ember fire',int:1.25,d:'Intense, throws embers downwind.'}
+};
+const WEATHER={
+ dry_hot:{n:'Dry & hot', humidity:20, temp:34, rain:0, sky1:'#9fb7c9', sky2:'#dfe8ee', note:'Dry, hot air drives fast flame growth and ember lift.'},
+ normal:{n:'Normal', humidity:45, temp:26, rain:0, sky1:'#a7bfd4', sky2:'#e9f0f4', note:'Balanced conditions keep fire spread moderate and steady.'},
+ cloudy:{n:'Cloudy', humidity:60, temp:22, rain:0, sky1:'#8ca0b3', sky2:'#dfe7ee', note:'Cloud cover cools the ground and slows drying.'},
+ rainy:{n:'Rainy', humidity:78, temp:20, rain:18, sky1:'#7f96a9', sky2:'#d5dee6', note:'Moisture and rain suppress flame front growth and spotting.'},
+ storm:{n:'Storm', humidity:82, temp:18, rain:30, sky1:'#6f7d90', sky2:'#c7d0d7', note:'Heavy rain and cool air sharply reduce fire intensity.'}
+};
+const P={biome:'grassland',crews:5,deer:20,land:'hills',forest:12,ign:'lightning',dir:90,wind:25,rate:1,speed:6,weather:'dry_hot',humidity:20,temp:34,rain:0,paused:false,step:0};
+for(const k in BIOMES)$('biome').add(new Option(BIOMES[k].n,k));
+for(const k in IGN)$('ign').add(new Option(IGN[k].n,k));
+for(const k in WEATHER)$('weather').add(new Option(WEATHER[k].n,k));
+
+// ---- simulation state: 0 fuel, 1 burning, 2 burnt
+let st,tm,fuel,hgt,tint,elev,forest,load,FA=[],maxE=0,seed=1,out=false;
+const LANDS={flat:'Flat plain',hills:'Rolling hills',mountain:'Mountain range',canyon:'Steep canyon'};
+for(const k in LANDS)$('land').add(new Option(LANDS[k],k));$('land').value=P.land;$('forest').value=P.forest;
+function noise(x,z,s){const fx=x/s,fz=z/s,ix=Math.floor(fx),iz=Math.floor(fz),sm=t=>t*t*(3-2*t),sx=sm(fx-ix),sz=sm(fz-iz);
+ const h=(a,b)=>{const n=Math.sin(a*127.1+b*311.7+seed)*43758.5453;return n-Math.floor(n)};
+ return (h(ix,iz)*(1-sx)+h(ix+1,iz)*sx)*(1-sz)+(h(ix,iz+1)*(1-sx)+h(ix+1,iz+1)*sx)*sz}
+const bt=j=>BIOMES[P.biome].burn+1+(forest[j]?2:(fuel[j]>1.5?1:0));
+const pct=(a,f)=>Array.from(a).sort((x,y)=>x-y)[Math.min(a.length-1,Math.floor(a.length*f))];
+function getWeather(){
+ const preset = WEATHER[P.weather] || WEATHER.normal;
+ return {
+  humidity: P.humidity ?? preset.humidity,
+  temp: P.temp ?? preset.temp,
+  rain: P.rain ?? preset.rain,
+  spread: Math.max(0.18, 1.2 - (P.humidity ?? preset.humidity) / 140 - (P.rain ?? preset.rain) / 80),
+  ember: Math.max(0.2, 1 - ((P.humidity ?? preset.humidity) / 140) - ((P.rain ?? preset.rain) / 70)),
+  note: preset.note
+ };
+}
+function syncWeather(){
+ const w = getWeather();
+ const preset = WEATHER[P.weather] || WEATHER.normal;
+ $('humidityv').textContent = `${P.humidity ?? preset.humidity}%`;
+ $('tempv').textContent = `${P.temp ?? preset.temp}°C`;
+ $('rainv').textContent = `${P.rain ?? preset.rain} mm/h`;
+ $('wnote').textContent = `${preset.note} Humidity ${P.humidity ?? preset.humidity}% · Temp ${P.temp ?? preset.temp}°C · Rain ${P.rain ?? preset.rain} mm/h.`;
+ document.documentElement.style.setProperty('--sky1', preset.sky1);
+ document.documentElement.style.setProperty('--sky2', preset.sky2);
+ buildWeatherFX();
+}
+function buildTerrain(){
+ const b=BIOMES[P.biome],T=P.land,R=K*b.rel;seed=Math.random()*1000;
+ st=new Uint8Array(N*N);tm=new Uint8Array(N*N);fuel=new Float32Array(N*N).fill(1);tint=new Uint8Array(N*N);hgt=new Float32Array(N*N);
+ elev=new Float32Array(N*N);forest=new Uint8Array(N*N);const fv=new Float32Array(N*N),fv2=new Float32Array(N*N);maxE=0;
+ for(let z=0;z<N;z++)for(let x=0;x<N;x++){const i=z*N+x,v=noise(x,z,14*K)*.6+noise(x,z,6*K)*.3+noise(x,z,3*K)*.1,dx=x/N-.5,dz=z/N-.5;let h=0;
+  if(T=='hills')h=v*7;
+  else if(T=='mountain')h=(Math.exp(-(dx*dx+dz*dz)*9)*.75+Math.exp(-Math.pow((dx+dz*.6)*5,2))*.55+v*.5)*15;
+  else if(T=='canyon'){const d=Math.abs(dx+(noise(0,z,9*K)-.5)*.35);h=(Math.min(1,d*3.4)*.95+v*.3)*12}
+  elev[i]=h*R;fv[i]=noise(x+57,z+91,(b.scat?1.5:6)*K)*.75+noise(x,z,2.5*K)*.25;fv2[i]=noise(x+200,z+300,8*K)}
+ for(let i=0;i<N*N;i++)maxE=Math.max(maxE,elev[i]);
+ const blob=(frac,mult,t)=>{const k=Math.floor(N*N*frac/4);for(let i=0;i<k;i++){const cx=Math.random()*N|0,cz=Math.random()*N|0,r=Math.random()*2;
+  for(let z=-2;z<=2;z++)for(let x=-2;x<=2;x++){const X=cx+x,Z=cz+z;if(X>=0&&X<N&&Z>=0&&Z<N&&x*x+z*z<=r*r+.5){fuel[Z*N+X]=mult;tint[Z*N+X]=t}}}};
+ blob(b.dry,1.8,1);blob(b.wet,.2,2);
+ // biome-specific ground features: 4 water, 5 snow, 6 sandy gully
+ if(b.feat=='ponds'){const t=pct(fv2,.14);for(let i=0;i<N*N;i++){if(fv2[i]<=t){tint[i]=4;elev[i]=0;fuel[i]=0}else elev[i]+=.6}}
+ if(b.feat=='snow'){const t=pct(fv2,.7);for(let i=0;i<N*N;i++)if(fv2[i]>=t&&elev[i]>maxE*.3){tint[i]=5;fuel[i]=.08}}
+ if(b.feat=='gullies')for(let z=0;z<N;z++)for(let x=0;x<N;x++){const i=z*N+x;if(Math.abs(noise(x,z,12*K)-.5)<.035){tint[i]=6;fuel[i]=.3;elev[i]=Math.max(0,elev[i]-1.2*K)}}
+ const thr=P.forest>0?pct(fv,1-P.forest/100):9;
+ for(let i=0;i<N*N;i++){
+  if(tint[i]>=4){hgt[i]=tint[i]==4?.05:.06;continue}
+  if(fv[i]>=thr&&(elev[i]<maxE*.8||b.rk>1)){forest[i]=1;fuel[i]*=1.35}
+  if(maxE>0&&elev[i]>maxE*b.rk){tint[i]=3;fuel[i]*=.35;forest[i]=0}
+  hgt[i]=forest[i]?(b.scat?1.3:1.6)+Math.random()*.7:tint[i]==3?.1:b.h*(tint[i]==2?.8:1)*(.8+Math.random()*.4)}
+ load=new Float32Array(N*N);for(let i=0;i<N*N;i++)load[i]=bt(i);FA=[];
+ P.step=0;out=false;dirty=true;arrow.position.y=maxE+10*K;spawnAgents();
+ $('bnote').textContent=`${b.d} Base spread ${b.p.toFixed(2)}, burns ${b.burn} step${b.burn>1?'s':''}, wind sensitivity ${b.wind}x.`;
+}
+function ignite(cx,cz){
+ const g=IGN[P.ign],b=BIOMES[P.biome],a=P.dir*Math.PI/180,wx=Math.sin(a),wz=-Math.cos(a);
+ const pts=[];
+ if(P.ign=='arson'){for(let i=-8*K;i<8*K;i++)pts.push([Math.round(cx-wz*i),Math.round(cz+wx*i)])}
+ else if(P.ign=='storm'){for(let i=0;i<7;i++)pts.push([Math.round(cx+(Math.random()-.5)*16*K),Math.round(cz+(Math.random()-.5)*16*K)])}
+ else pts.push([cx,cz]);
+ for(const [x,z] of pts)if(x>=0&&x<N&&z>=0&&z<N&&st[z*N+x]==0&&fuel[z*N+x]>0)spawnFire(x,z,1,a);
+ out=false;dirty=true;
+}
+const NB=[[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+// ---- fire agents: each burning front has a position, heading, intensity and age.
+// It senses fuel under it, burns that fuel, and decides where to spread. Out of fuel, it dies.
+const NBA=NB.map(([dx,dz])=>Math.atan2(dx,-dz));
+function spawnFire(x,z,I,hd){const c=z*N+x;st[c]=1;load[c]=bt(c);FA.push({c,x:x-N/2+.5+(Math.random()-.5)*.5,z:z-N/2+.5+(Math.random()-.5)*.5,I,age:0,hd})}
+function tick(){
+ const b=BIOMES[P.biome],g=IGN[P.ign],a=P.dir*Math.PI/180,wx=Math.sin(a),wz=-Math.cos(a),w=P.wind,n=FA.length;
+ const weather = getWeather();
+ const moistureMul = Math.max(0.18, 1.2 - weather.humidity / 140 - weather.rain / 80);
+ const tempMul = 1 + Math.max(0, (P.temp || 25) - 25) * 0.025;
+ for(let k=0;k<n;k++){const f=FA[k],i=f.c;
+  if(st[i]!=1){f.dead=1;continue}
+  f.I += (Math.min(2,.7+.3*fuel[i]*g.int) - f.I) * .5;
+  if(weather.rain > 0) f.I *= Math.max(0.4, 1 - weather.rain / 90);
+  if(weather.humidity > 55) f.I *= Math.max(0.2, 1 - weather.humidity / 180);
+  load[i]-=f.I;if(load[i]<=0){st[i]=2;f.dead=1;continue}
+  f.age++;
+  const x=i%N,z=(i/N)|0;let hk=0,bd=9;
+  for(let q=0;q<8;q++){const d=Math.abs(Math.atan2(Math.sin(NBA[q]-f.hd),Math.cos(NBA[q]-f.hd)));if(d<bd){bd=d;hk=q}}
+  for(let t=0,A=Math.max(1,Math.round(8*f.I));t<A;t++){
+   const [dx,dz]=NB[Math.random()<.35?hk:(Math.random()*8|0)],X=x+dx,Z=z+dz;if(X<0||X>=N||Z<0||Z>=N)continue;
+   const j=Z*N+X;if(st[j])continue;
+   const len=Math.hypot(dx,dz),al=(dx*wx+dz*wz)/len;
+   const p=b.p*fuel[j]*g.int*P.rate*moistureMul*tempMul*(len>1?.7:1)*Math.exp(.045*w*b.wind*al)*Math.exp(1.8*Math.max(-1.2,Math.min(1.2,(elev[j]-elev[i])/len)));
+   if(Math.random()<Math.min(1,p)){const c=Math.atan2(dx,-dz);st[j]=1;load[j]=bt(j);
+    FA.push({c:j,x:X-N/2+.5+(Math.random()-.5)*.5,z:Z-N/2+.5+(Math.random()-.5)*.5,I:.8*f.I,age:0,hd:c})}}
+  const sp=(P.ign=='ember'?.03:.004)*(w/40)*f.I*Math.max(0.15, weather.ember);
+  if(Math.random()<sp&&embers.length<250)embers.push({x:f.x,z:f.z,t:0,T:3+(Math.random()*(3+w/10)|0)});
+ }
+ FA=FA.filter(f=>!f.dead);P.step++;dirty=true;agentsTick();
+}
+function stats(){let f=0,bt=0;for(let i=0;i<N*N;i++){if(st[i]==1)f++;else if(st[i]==2)bt++}
+ $('s_step').textContent=P.step;$('s_fire').textContent=f;$('s_burnt').textContent=(bt/N/N*100).toFixed(1)+'%';$('s_crew').textContent=crew.filter(a=>a.dead).length+'/'+crew.length;$('s_deer').textContent=deer.filter(a=>a.dead).length+'/'+deer.length;$('s_emb').textContent=embers.length;return f}
+
+// ---- agents: fire crews, wildlife, embers (the fire itself stays a cellular automaton)
+let crew=[],deer=[],embers=[],wet2=new Uint8Array(N*N);
+const BX=-N/2+8,BZ=N/2-8;
+const gy=(x,z)=>{const fx=Math.max(0,Math.min(N-1.001,x+N/2-.5)),fz=Math.max(0,Math.min(N-1.001,z+N/2-.5)),ix=fx|0,iz=fz|0,ux=fx-ix,uz=fz-iz,e=(a,b)=>elev[b*N+a];
+ return (e(ix,iz)*(1-ux)+e(ix+1,iz)*ux)*(1-uz)+(e(ix,iz+1)*(1-ux)+e(ix+1,iz+1)*ux)*uz};
+const cellOf=(x,z)=>{const cx=Math.floor(x+N/2),cz=Math.floor(z+N/2);return cx<0||cx>=N||cz<0||cz>=N?-1:cz*N+cx};
+function spawnAgents(){
+ wet2=new Uint8Array(N*N);embers=[];crew=[];deer=[];
+ for(let i=0;i<P.crews;i++){const x=BX+(i%4)*1.3,z=BZ-((i/4)|0)*1.3;crew.push({x,z,px:x,pz:z,state:'standby',water:100,wait:0,dead:false})}
+ for(let i=0;i<P.deer;i++){let x,z,t=0;do{x=(Math.random()-.5)*(N-8);z=(Math.random()-.5)*(N-8);t++}while(tint[cellOf(x,z)]>=4&&t<60);deer.push({x,z,px:x,pz:z,h:Math.random()*6.28,state:'graze',dead:false})}
+ dirty=true;
+}
+function walk(a,dx,dz,sp){const l=Math.hypot(dx,dz)||1;dx/=l;dz/=l;
+ const k=Math.max(.35,1-Math.max(0,(gy(a.x+dx*sp,a.z+dz*sp)-gy(a.x,a.z))/sp)*.6);  // slower uphill
+ a.x=Math.max(-N/2+2,Math.min(N/2-2,a.x+dx*sp*k));a.z=Math.max(-N/2+2,Math.min(N/2-2,a.z+dz*sp*k));a.h=Math.atan2(dx,dz)}
+function agentsTick(){
+ const live=[];for(let i=0;i<N*N;i++)if(st[i]==1)live.push(i);
+ const fx=i=>i%N-N/2+.5,fz=i=>((i/N)|0)-N/2+.5,a=P.dir*Math.PI/180,wx=Math.sin(a),wz=-Math.cos(a);
+ // embers: drift downwind, land, maybe start a spot fire
+ for(const e of embers){e.t++;const v=1.2+P.wind/9;e.x+=wx*v+(Math.random()-.5)*1.4;e.z+=wz*v+(Math.random()-.5)*1.4;
+  if(e.t>=e.T){e.done=1;const c=cellOf(e.x,e.z);if(c>=0&&st[c]==0&&Math.random()<.5*fuel[c])spawnFire(c%N,(c/N)|0,1,Math.random()*6.28)}}
+ embers=embers.filter(e=>!e.done);
+ // wildlife: graze, flee the nearest fire, die if overrun
+ for(const d of deer){if(d.dead)continue;d.px=d.x;d.pz=d.z;
+  const c=cellOf(d.x,d.z);if(c>=0&&st[c]==1&&Math.random()<.5){d.dead=true;continue}
+  let nd=1e9,nx=0,nz=0;for(const i of live){const dx=d.x-fx(i),dz=d.z-fz(i),q=dx*dx+dz*dz;if(q<nd){nd=q;nx=dx;nz=dz}}
+  if(Math.sqrt(nd)<16){d.state='flee';walk(d,nx+(Math.random()-.5)*.6,nz+(Math.random()-.5)*.6,1.8)}
+  else{d.state='graze';d.h+=(Math.random()-.5)*.8;walk(d,Math.sin(d.h),Math.cos(d.h),.25)}}
+ // crews: respond, suppress, wet firebreaks, retreat if unsafe, return to refill
+ for(const f of crew){if(f.dead)continue;f.px=f.x;f.pz=f.z;
+  const c=cellOf(f.x,f.z);if(c>=0&&st[c]==1&&Math.random()<.35){f.dead=true;continue}
+  let near=0,nd=1e9,ni=-1;for(const i of live){const dx=fx(i)-f.x,dz=fz(i)-f.z,q=dx*dx+dz*dz;if(q<6)near++;if(q<nd){nd=q;ni=i}}
+  const home=Math.hypot(BX-f.x,BZ-f.z);
+  if(f.state=='refill'){if(--f.wait<=0){f.water=100;f.state='standby'}}
+  else if(f.water<10){f.state='return';walk(f,BX-f.x,BZ-f.z,1.2);if(home<3){f.state='refill';f.wait=4}}
+  else if(ni<0){f.state='standby';if(home>3)walk(f,BX-f.x,BZ-f.z,1.2)}
+  else if(near>=4){f.state='retreat';walk(f,f.x-fx(ni),f.z-fz(ni),1.6)}
+  else if(Math.sqrt(nd)>2.6){f.state='deploy';walk(f,fx(ni)-f.x,fz(ni)-f.z,1.6)}
+  else{f.state='suppress';let n=0;
+   for(const i of live){if(n>=3)break;const dx=fx(i)-f.x,dz=fz(i)-f.z;if(dx*dx+dz*dz<=9){st[i]=2;f.water-=6;n++}}
+   const c0=cellOf(f.x,f.z),cx=c0%N,cz=(c0/N)|0;
+   for(let dz=-3;dz<=3;dz++)for(let dx=-3;dx<=3;dx++){const X=cx+dx,Z=cz+dz;if(X<0||X>=N||Z<0||Z>=N)continue;const j=Z*N+X;if(st[j]==0&&!wet2[j]){wet2[j]=1;fuel[j]*=.15;f.water-=.4}}}}
+}
+
+// ---- 3D scene
+const stage=$('stage'),renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));stage.appendChild(renderer.domElement);
+const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(45,1,.1,900);
+scene.add(new THREE.HemisphereLight(0xcfe3ff,0x3a3024,.9));
+const sun=new THREE.DirectionalLight(0xffffff,.8);sun.position.set(-20,40,25);scene.add(sun);
+const cloudGroup=new THREE.Group();const rainGroup=new THREE.Group();scene.add(cloudGroup);scene.add(rainGroup);
+const cloudMeshes=[],rainDrops=[];
+function buildWeatherFX(){
+ const preset = WEATHER[P.weather] || WEATHER.normal;
+ const rainLevel = Math.max(0, P.rain ?? preset.rain);
+ const cloudLevel = Math.max(0, (P.humidity ?? preset.humidity) - 40) / 60 + (P.weather==='cloudy'||P.weather==='rainy'||P.weather==='storm'?1:0);
+ const terrainHalf = (N - 1) / 2 - 6;
+ while(cloudGroup.children.length) cloudGroup.remove(cloudGroup.children[0]);
+ while(rainGroup.children.length) rainGroup.remove(rainGroup.children[0]);
+ cloudMeshes.length=0;rainDrops.length=0;
+ for(let i=0;i<Math.min(18,Math.max(5,Math.round(cloudLevel*8)));i++){
+  const cloud = new THREE.Group();
+  for(let j=0;j<5;j++){
+   const puff = new THREE.Mesh(new THREE.SphereGeometry(5 + Math.random()*3, 16, 16), new THREE.MeshStandardMaterial({color:0xf2f5f7, transparent:true, opacity:0.7, depthWrite:false}));
+   puff.position.set((j-2)*4.5 + Math.random()*2, Math.random()*2.5, (Math.random()-0.5)*5);
+   cloud.add(puff);
+  }
+  const x = (Math.random() - 0.5) * terrainHalf * 2;
+  const z = (Math.random() - 0.5) * terrainHalf * 2;
+  cloud.position.set(x, 28 + Math.random()*18, z);
+  cloud.userData.speed = 0.15 + Math.random()*0.18;
+  cloud.userData.minX = -terrainHalf;
+  cloud.userData.maxX = terrainHalf;
+  cloud.userData.minZ = -terrainHalf;
+  cloud.userData.maxZ = terrainHalf;
+  cloudGroup.add(cloud);cloudMeshes.push(cloud);
+ }
+ const rainCount = Math.max(0,Math.min(500,Math.round(rainLevel*18)));
+ for(let i=0;i<rainCount;i++){
+  const drop = new THREE.Mesh(
+   new THREE.BoxGeometry(.12, .8, .12),
+   new THREE.MeshBasicMaterial({color:0x9ad7ff, transparent:true, opacity: rainLevel > 15 ? .9 : .5})
+  );
+  const x = (Math.random() - 0.5) * terrainHalf * 2;
+  const z = (Math.random() - 0.5) * terrainHalf * 2;
+  drop.position.set(x, 18 + Math.random()*50, z);
+  drop.userData.speed = 8 + Math.random()*16 + rainLevel*0.7;
+  rainGroup.add(drop);rainDrops.push(drop);
+ }
+ rainGroup.visible = rainLevel > 0.1;
+ cloudGroup.visible = cloudLevel > 0.2;
+}
+function updateWeatherFX(t){
+ const preset = WEATHER[P.weather] || WEATHER.normal;
+ const rainLevel = Math.max(0, P.rain ?? preset.rain);
+ const cloudLevel = Math.max(0, (P.humidity ?? preset.humidity) - 40) / 60 + (P.weather==='cloudy'||P.weather==='rainy'||P.weather==='storm'?1:0);
+ const terrainHalf = (N - 1) / 2 - 6;
+ for(const cloud of cloudMeshes){
+  cloud.position.x += cloud.userData.speed * 0.1;
+  if(cloud.position.x > cloud.userData.maxX) cloud.position.x = cloud.userData.minX;
+  if(cloud.position.x < cloud.userData.minX) cloud.position.x = cloud.userData.maxX;
+  cloud.position.z += Math.sin(t * 0.0005 + cloud.position.x) * 0.08;
+  cloud.position.z = Math.max(cloud.userData.minZ, Math.min(cloud.userData.maxZ, cloud.position.z));
+  cloud.position.y += Math.sin(t * 0.00045 + cloud.position.x) * 0.02;
+ }
+ cloudGroup.visible = cloudLevel > 0.2;
+ rainGroup.visible = rainLevel > 0.1;
+ for(const drop of rainDrops){
+  drop.position.y -= drop.userData.speed * 0.08;
+  drop.position.x += Math.sin((drop.position.y + t*0.03) * 0.2) * 0.07;
+  const minX = -terrainHalf, maxX = terrainHalf, minZ = -terrainHalf, maxZ = terrainHalf;
+  if(drop.position.y < 0 || drop.position.x < minX || drop.position.x > maxX || drop.position.z < minZ || drop.position.z > maxZ){
+   drop.position.y = 45 + Math.random()*20;
+   drop.position.x = (Math.random() - 0.5) * terrainHalf * 2;
+   drop.position.z = (Math.random() - 0.5) * terrainHalf * 2;
+  }
+ }
+}
+const tg=new THREE.PlaneGeometry(N-1,N-1,N-1,N-1);tg.rotateX(-Math.PI/2);tg.setAttribute('color',new THREE.BufferAttribute(new Float32Array(N*N*3),3));
+tg.boundingSphere=new THREE.Sphere(new THREE.Vector3(),N*3);
+const cells=new THREE.Mesh(tg,new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide}));cells.frustumCulled=false;scene.add(cells);
+const flames=new THREE.InstancedMesh(new THREE.ConeGeometry(.42,1,6),new THREE.MeshBasicMaterial({transparent:true,opacity:.92}),N*N);flames.frustumCulled=false;scene.add(flames);
+const trees=new THREE.InstancedMesh(new THREE.ConeGeometry(.45,1,7),new THREE.MeshLambertMaterial(),N*N);trees.frustumCulled=false;scene.add(trees);
+const arrow=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(0,6,0),8,0xffaa33,2.2,1.4);scene.add(arrow);
+const fM=new THREE.InstancedMesh(new THREE.CylinderGeometry(.35,.35,1,8),new THREE.MeshLambertMaterial(),12);
+const dM=new THREE.InstancedMesh(new THREE.BoxGeometry(.7,.6,1.3),new THREE.MeshLambertMaterial(),40);
+const eM=new THREE.InstancedMesh(new THREE.SphereGeometry(.28,6,6),new THREE.MeshBasicMaterial({color:0xffb347}),250);
+const baseM=new THREE.Mesh(new THREE.BoxGeometry(3.5,.5,3.5),new THREE.MeshLambertMaterial({color:0x2f6bd8}));
+[fM,dM,eM].forEach(m=>{m.frustumCulled=false;scene.add(m)});scene.add(baseM);
+const D=new THREE.Object3D(),C=new THREE.Color();
+let dirty=true,th=.7,ph=1.0,rad=150;
+function cam_update(){cam.position.set(rad*Math.sin(ph)*Math.sin(th),rad*Math.cos(ph),rad*Math.sin(ph)*Math.cos(th));cam.lookAt(0,3,0)}
+const cDry=new THREE.Color('#d9c64a'),cWet=new THREE.Color('#2f86c4'),cRock=new THREE.Color('#8b8f92'),cFl=new THREE.Color('#3f5f34'),T2=new THREE.Color();
+function paintCells(){
+ const b=BIOMES[P.biome],pos=tg.attributes.position,col=tg.attributes.color;let k=0;
+ for(let i=0;i<N*N;i++){const x=i%N-N/2+.5,z=((i/N)|0)-N/2+.5,e=elev[i],h=hgt[i],F=forest[i];let y;
+  if(st[i]==0){y=e+(F||tint[i]>=4?0:h*.6)+(tint[i]==4?h:0);C.set(b.c);if(F)C.multiplyScalar(.55);else if(tint[i]==1)C.lerp(cDry,.6);else if(tint[i]==2)C.lerp(cWet,.45);else if(tint[i]==3)C.copy(cRock);else if(tint[i]==4)C.set('#2a78b5');else if(tint[i]==5)C.set('#eef3f6');else if(tint[i]==6)C.set('#cdb98a');
+   if(wet2[i])C.lerp(cWet,.35);C.offsetHSL(0,0,(h*7%.1)*.5-.025+(e/(maxE||1))*.06)}
+  else if(st[i]==1){C.set('#7a2a10');y=e+(F?0:h*.3)}
+  else{C.set('#2b2624');C.offsetHSL(0,0,(i*37%10)/300);y=e+.03}
+  pos.setXYZ(i,x,y,z);col.setXYZ(i,C.r,C.g,C.b);
+  if(F){const th=st[i]==2?h*.7:h,w=st[i]==2?.3:.9+(i%5)*.05;D.position.set(x,e+.1+th/2,z);D.scale.set(w,th,w);D.rotation.set(0,0,0);D.updateMatrix();trees.setMatrixAt(k,D.matrix);
+   if(st[i]==0)T2.set(b.tc).offsetHSL(0,0,((i%5)-2)*.015);else T2.set(st[i]==1?'#8a3513':'#151312');trees.setColorAt(k,T2);k++}}
+ pos.needsUpdate=true;col.needsUpdate=true;tg.computeVertexNormals();
+ trees.count=k;if(k){trees.instanceMatrix.needsUpdate=true;trees.instanceColor.needsUpdate=true}
+}
+function paintFlames(t){
+ const a=P.dir*Math.PI/180,wx=Math.sin(a),wz=-Math.cos(a),lean=Math.min(.9,P.wind/70);let k=0;
+ for(const f of FA){const i=f.c,fh=(1+hgt[i]*1.6)*(.7+.6*Math.abs(Math.sin(t*.008+i*1.7)))*(.45+.55*f.I);
+  D.position.set(f.x+wx*lean*.3,elev[i]+hgt[i]*.6+fh/2,f.z+wz*lean*.3);D.scale.set(.9+.3*Math.sin(t*.01+i),fh,.9);D.rotation.set(wz*lean,t*.002+i,-wx*lean);D.updateMatrix();
+  flames.setMatrixAt(k,D.matrix);C.setHSL(.02+.07*Math.min(1,f.I/1.6)+.02*Math.abs(Math.sin(t*.012+i*2.1)),1,.5);flames.setColorAt(k,C);k++}
+ flames.count=k;flames.instanceMatrix.needsUpdate=true;if(flames.instanceColor)flames.instanceColor.needsUpdate=true;
+}
+function syncWind(){
+ const a=P.dir*Math.PI/180;arrow.setDirection(new THREE.Vector3(Math.sin(a),0,-Math.cos(a)));arrow.setLength((3+P.wind/8)*K,2.2*K,1.4*K);arrow.position.set(0,maxE+10*K,0);
+ const card=['N','NE','E','SE','S','SW','W','NW'][Math.round(P.dir/45)%8];
+ $('wdv').textContent=`${P.dir}° ${card}`;$('wsv').textContent=P.wind+' km/h';$('forestv').textContent=P.forest+'%';$('crewsv').textContent=P.crews;$('deerv').textContent=P.deer;$('ratev').textContent=P.rate.toFixed(2)+'x';$('speedv').textContent=P.speed+' steps/s';
+ $('compass').querySelector('i').style.transform=`translate(-50%,-100%) rotate(${P.dir}deg)`;arrow.visible=P.wind>0;
+}
+function note(){const g=IGN[P.ign];$('inote').textContent=`${g.d} Intensity ${g.int}x.`}
+
+// ---- controls
+[['wd','dir'],['ws','wind'],['rate','rate'],['speed','speed']].forEach(([id,k])=>$(id).oninput=e=>{P[k]=+e.target.value;syncWind()});
+$('weather').onchange=e=>{P.weather=e.target.value;const preset=WEATHER[P.weather];P.humidity=preset.humidity;P.temp=preset.temp;P.rain=preset.rain;$('humidity').value=P.humidity;$('temp').value=P.temp;$('rain').value=P.rain;syncWeather();syncWind();};
+$('humidity').oninput=e=>{P.humidity=+e.target.value;syncWeather();};
+$('temp').oninput=e=>{P.temp=+e.target.value;syncWeather();};
+$('rain').oninput=e=>{P.rain=+e.target.value;syncWeather();};
+$('biome').onchange=e=>{P.biome=e.target.value;const B=BIOMES[P.biome];P.land=B.land;P.forest=B.forest;$('land').value=P.land;$('forest').value=P.forest;syncWind();buildTerrain();ignite(N/2|0,N/2|0)};
+$('crews').oninput=e=>{P.crews=+e.target.value;syncWind()};$('crews').onchange=spawnAgents;
+$('deer').oninput=e=>{P.deer=+e.target.value;syncWind()};$('deer').onchange=spawnAgents;
+$('land').onchange=e=>{P.land=e.target.value;buildTerrain();ignite(N/2|0,N/2|0)};
+$('forest').oninput=e=>{P.forest=+e.target.value;syncWind()};
+$('forest').onchange=()=>{buildTerrain();ignite(N/2|0,N/2|0)};
+$('ign').onchange=e=>{P.ign=e.target.value;note()};
+$('ignite').onclick=()=>ignite(N/2|0,N/2|0);
+$('reset').onclick=()=>{buildTerrain();ignite(N/2|0,N/2|0)};
+$('pause').onclick=e=>{P.paused=!P.paused;e.target.textContent=P.paused?'Resume':'Pause'};
+// orbit + click-to-ignite
+let drag=null;const el=renderer.domElement,ray=new THREE.Raycaster(),pl=new THREE.Plane(new THREE.Vector3(0,1,0),-.2);
+el.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,m:0};el.setPointerCapture(e.pointerId)});
+el.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.m+=Math.abs(dx)+Math.abs(dy);drag.x=e.clientX;drag.y=e.clientY;th-=dx*.006;ph=Math.max(.15,Math.min(1.4,ph-dy*.006))});
+el.addEventListener('pointerup',e=>{if(drag&&drag.m<5){const r=el.getBoundingClientRect();ray.setFromCamera(new THREE.Vector2((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1),cam);
+ const hit=ray.intersectObject(cells)[0];if(hit){const x=Math.floor(hit.point.x+N/2),z=Math.floor(hit.point.z+N/2);if(x>=0&&x<N&&z>=0&&z<N)ignite(x,z)}}drag=null});
+el.addEventListener('wheel',e=>{e.preventDefault();rad=Math.max(40,Math.min(320,rad*(1+e.deltaY*.001)))},{passive:false});
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h);cam.aspect=w/h;cam.updateProjectionMatrix()}
+addEventListener('resize',resize);
+
+function paintAgents(al){
+ const L=(a,b)=>a+(b-a)*al;let k=0;
+ for(const f of crew){if(f.dead)continue;const x=L(f.px,f.x),z=L(f.pz,f.z);D.position.set(x,gy(x,z)+1.1,z);D.scale.set(1.3,2.2,1.3);D.rotation.set(0,0,0);D.updateMatrix();fM.setMatrixAt(k,D.matrix);
+  C.set({suppress:'#4fd1ff',retreat:'#ff3b3b',return:'#ffffff',refill:'#7aa2ff'}[f.state]||'#ffd400');fM.setColorAt(k,C);k++}
+ fM.count=k;if(k){fM.instanceMatrix.needsUpdate=true;fM.instanceColor.needsUpdate=true}
+ k=0;for(const d of deer){if(d.dead)continue;const x=L(d.px,d.x),z=L(d.pz,d.z);D.position.set(x,gy(x,z)+.6,z);D.scale.set(1.4,1.4,1.4);D.rotation.set(0,d.h,0);D.updateMatrix();dM.setMatrixAt(k,D.matrix);
+  C.set(d.state=='flee'?'#e8b070':'#8a5a30');dM.setColorAt(k,C);k++}
+ dM.count=k;if(k){dM.instanceMatrix.needsUpdate=true;dM.instanceColor.needsUpdate=true}
+ k=0;for(const e of embers){D.position.set(e.x,gy(e.x,e.z)+2+Math.sin(e.t/e.T*Math.PI)*5,e.z);D.scale.set(1,1,1);D.rotation.set(0,0,0);D.updateMatrix();eM.setMatrixAt(k++,D.matrix)}
+ eM.count=k;eM.instanceMatrix.needsUpdate=true;baseM.position.set(BX,gy(BX,BZ)+.3,BZ);
+}
+let last=0,acc=0;
+function loop(t){requestAnimationFrame(loop);const dt=t-last;last=t;
+ if(!P.paused&&!out){acc+=dt;const iv=1000/P.speed;while(acc>=iv){acc-=iv;tick()}}
+ if(dirty){paintCells();const f=stats();dirty=false;
+  $('status').textContent=f?'Fire spreading':(P.step?'Fire burned out. Click the ground to ignite again.':'Click the ground to start a fire');
+  if(!f&&P.step&&!embers.length)out=true}
+ paintFlames(t);updateWeatherFX(t);paintAgents(P.paused||out?1:Math.min(1,acc/(1000/P.speed)));cam_update();renderer.render(scene,cam)}
+buildTerrain();note();syncWeather();syncWind();resize();ignite(N/2|0,N/2|0);requestAnimationFrame(loop);
+</script></body></html>
